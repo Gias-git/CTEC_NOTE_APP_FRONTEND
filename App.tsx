@@ -91,10 +91,10 @@ const App: React.FC = () => {
         <section className="relative overflow-hidden pt-12 pb-8">
           <div className="max-w-5xl mx-auto px-6 text-center">
             <div className="inline-block px-4 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600 text-[10px] font-extrabold uppercase tracking-[0.2em] mb-6">
-              CTEC
+              CTEC NOTE APP
             </div>
             <h2 className="text-4xl md:text-6xl font-[900] text-slate-900 mb-6 tracking-tight leading-tight">
-              BUTEX Affiliated Colleges Notes <br/> 
+              BUTEX Affiliated Colleges Notes FOR <br/> 
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-500">Every Department</span>
             </h2>
             <p className="text-slate-500 max-w-xl mx-auto text-base md:text-lg font-medium leading-relaxed mb-8">
