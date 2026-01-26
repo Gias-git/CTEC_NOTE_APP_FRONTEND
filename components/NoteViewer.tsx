@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchNotes, fetchFilteredSubjects } from '../store';
 import { Department, DEPARTMENTS, LEVELS, TERMS, Note, Subject } from '../types';
@@ -50,11 +49,24 @@ export const NoteViewer: React.FC = () => {
 
   const resetToStep = (step: Step) => {
     setCurrentStep(step);
-    if (step === 'LEVEL') { setSelectedLevel(null); setSelectedTerm(null); setSelectedDept(null); setSelectedSubjectId(null); setSelectedSubjectName(null); setActiveNote(null); }
-    else if (step === 'TERM') { setSelectedTerm(null); setSelectedDept(null); setSelectedSubjectId(null); setSelectedSubjectName(null); setActiveNote(null); }
-    else if (step === 'DEPT') { setSelectedDept(null); setSelectedSubjectId(null); setSelectedSubjectName(null); setActiveNote(null); }
-    else if (step === 'SUBJECT') { setSelectedSubjectId(null); setSelectedSubjectName(null); setActiveNote(null); }
-    else if (step === 'NOTES') { setActiveNote(null); }
+    if (step === 'LEVEL') { 
+      setSelectedLevel(null); setSelectedTerm(null); setSelectedDept(null); 
+      setSelectedSubjectId(null); setSelectedSubjectName(null); setActiveNote(null); 
+    }
+    else if (step === 'TERM') { 
+      setSelectedTerm(null); setSelectedDept(null); setSelectedSubjectId(null); 
+      setSelectedSubjectName(null); setActiveNote(null); 
+    }
+    else if (step === 'DEPT') { 
+      setSelectedDept(null); setSelectedSubjectId(null); setSelectedSubjectName(null); 
+      setActiveNote(null); 
+    }
+    else if (step === 'SUBJECT') { 
+      setSelectedSubjectId(null); setSelectedSubjectName(null); setActiveNote(null); 
+    }
+    else if (step === 'NOTES') { 
+      setActiveNote(null); 
+    }
   };
 
   const getEmbedUrl = (url: string) => {
@@ -65,7 +77,6 @@ export const NoteViewer: React.FC = () => {
 
   const toggleFullscreen = () => {
     if (!iframeContainerRef.current) return;
-
     if (!document.fullscreenElement) {
       iframeContainerRef.current.requestFullscreen().catch(err => {
         alert(`Error attempting to enable full-screen mode: ${err.message}`);
@@ -77,7 +88,6 @@ export const NoteViewer: React.FC = () => {
     }
   };
 
-  // Listen for escape key or browser exit from fullscreen
   useEffect(() => {
     const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFsChange);
@@ -89,16 +99,39 @@ export const NoteViewer: React.FC = () => {
     window.open(url, '_blank');
   };
 
-  const renderBreadcrumbs = () => (
-    <div className="flex justify-center mb-8">
-      <nav className="inline-flex items-center glass-card p-1.5 rounded-full shadow-lg border border-white/50 overflow-hidden">
-        <button onClick={() => resetToStep('LEVEL')} className={`px-4 py-1.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition ${currentStep === 'LEVEL' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Level</button>
-        {selectedLevel && <><span className="mx-1 text-slate-300">/</span><button onClick={() => resetToStep('TERM')} className={`px-4 py-1.5 rounded-full text-[10px] font-extrabold uppercase transition ${currentStep === 'TERM' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}>L{selectedLevel}</button></>}
-        {selectedTerm && <><span className="mx-1 text-slate-300">/</span><button onClick={() => resetToStep('DEPT')} className={`px-4 py-1.5 rounded-full text-[10px] font-extrabold uppercase transition ${currentStep === 'DEPT' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}>T{selectedTerm}</button></>}
-        {selectedDept && <><span className="mx-1 text-slate-300">/</span><button onClick={() => resetToStep('SUBJECT')} className={`px-4 py-1.5 rounded-full text-[10px] font-extrabold uppercase transition ${currentStep === 'SUBJECT' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}>{selectedDept}</button></>}
-      </nav>
-    </div>
-  );
+  const renderBreadcrumbs = () => {
+    const steps: Step[] = ['LEVEL', 'TERM', 'DEPT', 'SUBJECT', 'NOTES', 'PDF_VIEW'];
+    const currentIndex = steps.indexOf(currentStep);
+    const prevStep = currentIndex > 0 ? steps[currentIndex - 1] : null;
+
+    return (
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-8">
+        {/* Back Button */}
+        {prevStep && (
+          <button
+            onClick={() => resetToStep(prevStep)}
+            className="flex items-center gap-2 px-4 py-2 glass-card rounded-full border border-white/50 text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-all active:scale-95 group shadow-sm"
+          >
+            <svg 
+              className="w-4 h-4 transition-transform group-hover:-translate-x-1" 
+              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span className="text-[10px] font-black uppercase tracking-widest">Back</span>
+          </button>
+        )}
+
+        {/* Breadcrumb Navigation */}
+        <nav className="inline-flex items-center glass-card p-1.5 rounded-full shadow-lg border border-white/50 overflow-hidden">
+          <button onClick={() => resetToStep('LEVEL')} className={`px-4 py-1.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition ${currentStep === 'LEVEL' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Level</button>
+          {selectedLevel && <><span className="mx-1 text-slate-300">/</span><button onClick={() => resetToStep('TERM')} className={`px-4 py-1.5 rounded-full text-[10px] font-extrabold uppercase transition ${currentStep === 'TERM' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}>L{selectedLevel}</button></>}
+          {selectedTerm && <><span className="mx-1 text-slate-300">/</span><button onClick={() => resetToStep('DEPT')} className={`px-4 py-1.5 rounded-full text-[10px] font-extrabold uppercase transition ${currentStep === 'DEPT' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}>T{selectedTerm}</button></>}
+          {selectedDept && <><span className="mx-1 text-slate-300">/</span><button onClick={() => resetToStep('SUBJECT')} className={`px-4 py-1.5 rounded-full text-[10px] font-extrabold uppercase transition ${currentStep === 'SUBJECT' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}>{selectedDept}</button></>}
+        </nav>
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -197,7 +230,6 @@ export const NoteViewer: React.FC = () => {
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Academic Study Material</p>
                 </div>
                 
-                {/* Embedded Actions in card */}
                 <div className="mt-6 pt-6 border-t border-slate-100 flex items-center justify-end gap-3">
                    <button 
                      onClick={(e) => handleDownload(e, note.noteGoogleDriveLink)}
