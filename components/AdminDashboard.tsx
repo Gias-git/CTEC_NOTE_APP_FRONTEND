@@ -1,264 +1,305 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { fetchNotes, createNote, deleteNoteApi, fetchAllSubjects, createSubject, deleteSubjectApi } from '../store';
-import { Note, Department, DEPARTMENTS, LEVELS, TERMS, Subject } from '../types';
-// Fix: Added IconFile to the imported icons from ./Icons
+import { Note, Department, DEPARTMENTS, Subject } from '../types';
 import { IconTrash, IconPlus, IconFile } from './Icons';
 
 export const AdminDashboard: React.FC = () => {
+  // --- DATA STATE ---
   const [notes, setNotes] = useState<Note[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  
+  // --- UI STATE ---
+  const [activeTab, setActiveTab] = useState<'NOTES' | 'SUBJECTS'>('NOTES');
+  const [selectedDept, setSelectedDept] = useState<Department>('Apparel');
+  const [selectedLT, setSelectedLT] = useState('L1-T1');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // --- MODAL STATE ---
   const [isNoteFormOpen, setIsNoteFormOpen] = useState(false);
   const [isSubjectFormOpen, setIsSubjectFormOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'NOTES' | 'SUBJECTS'>('NOTES');
-  const [isLoading, setIsLoading] = useState(false);
-  
-  // Confirmation Modal State
   const [deleteTarget, setDeleteTarget] = useState<{ id: string, type: 'NOTE' | 'SUBJECT', name: string } | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
-  const [noteForm, setNoteForm] = useState({ noteName: '', noteGoogleDriveLink: '', subjectId: '' });
-  const [subjectForm, setSubjectForm] = useState({ subjectName: '', department: 'Yarn' as Department, level: 1, term: 1 });
+  // --- FORM STATES ---
+  const [noteForm, setNoteForm] = useState({ 
+    noteName: '', 
+    noteGoogleDriveLink: '', 
+    subjectId: '',
+    tempDept: 'Apparel' as Department,
+    tempLevel: 1,
+    tempTerm: 1
+  });
 
-  useEffect(() => { loadData(); }, [activeTab]);
+  const [subjectForm, setSubjectForm] = useState({ 
+    subjectName: '', 
+    department: 'Apparel' as Department, 
+    level: 1, 
+    term: 1 
+  });
+
+  // --- API LOGIC ---
+  useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      if (activeTab === 'NOTES') {
-        const [n, s] = await Promise.all([fetchNotes(), fetchAllSubjects()]);
-        setNotes(n); setSubjects(s);
-      } else {
-        const s = await fetchAllSubjects();
-        setSubjects(s);
-      }
-    } catch (err) { console.error(err); } 
-    finally { setIsLoading(false); }
+      const [n, s] = await Promise.all([fetchNotes(), fetchAllSubjects()]);
+      setNotes(n); 
+      setSubjects(s);
+    } catch (err) {
+      setError("Sync failed. Check your API connection.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleNoteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!noteForm.subjectId) return setError("Please select a subject.");
+    setIsSubmitting(true);
     try {
-      await createNote(noteForm);
-      setNoteForm({ noteName: '', noteGoogleDriveLink: '', subjectId: '' });
+      await createNote({
+        noteName: noteForm.noteName,
+        noteGoogleDriveLink: noteForm.noteGoogleDriveLink,
+        subjectId: noteForm.subjectId
+      });
+      setNoteForm({ ...noteForm, noteName: '', noteGoogleDriveLink: '', subjectId: '' });
       setIsNoteFormOpen(false);
-      await loadData();
-    } catch (err: any) { alert("Failed to add note: " + err.message); }
+      loadData();
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to save resource.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSubjectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       await createSubject(subjectForm);
-      setSubjectForm({ subjectName: '', department: 'Yarn', level: 1, term: 1 });
+      setSubjectForm({ subjectName: '', department: 'Apparel' as Department, level: 1, term: 1 });
       setIsSubjectFormOpen(false);
-      await loadData();
-    } catch (err: any) { alert("Failed to add subject: " + err.message); }
+      loadData();
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to create subject.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const executeDelete = async () => {
     if (!deleteTarget) return;
-    setIsDeleting(true);
+    setIsSubmitting(true);
     try {
-      if (deleteTarget.type === 'NOTE') {
-        await deleteNoteApi(deleteTarget.id);
-      } else {
-        await deleteSubjectApi(deleteTarget.id);
-      }
+      deleteTarget.type === 'NOTE' ? await deleteNoteApi(deleteTarget.id) : await deleteSubjectApi(deleteTarget.id);
       setDeleteTarget(null);
-      await loadData();
-    } catch (err: any) {
-      alert(`Error deleting ${deleteTarget.type.toLowerCase()}: Ensure no resources are linked to this item.`);
+      loadData();
+    } catch (err) {
+      setError("Delete failed. This subject may have linked notes.");
     } finally {
-      setIsDeleting(false);
+      setIsSubmitting(false);
     }
   };
 
+  // --- FILTER LOGIC ---
+  const formAvailableSubjects = useMemo(() => {
+    return subjects.filter(s => 
+      s.department === noteForm.tempDept && 
+      s.level === noteForm.tempLevel && 
+      s.term === noteForm.tempTerm
+    );
+  }, [subjects, noteForm.tempDept, noteForm.tempLevel, noteForm.tempTerm]);
+
+  const displayData = useMemo(() => {
+    const [l, t] = selectedLT.replace('L', '').replace('T', '').split('-').map(Number);
+    if (activeTab === 'NOTES') {
+      return notes.filter(n => 
+        n.subjectId?.level === l && n.subjectId?.term === t && 
+        n.subjectId?.department === selectedDept &&
+        n.noteName.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    return subjects.filter(s => 
+      s.level === l && s.term === t && 
+      s.department === selectedDept &&
+      s.subjectName.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [notes, subjects, activeTab, selectedDept, selectedLT, searchQuery]);
+
   return (
-    <div className="max-w-6xl mx-auto p-4 space-y-8 animate-in fade-in duration-500">
-      {/* Custom Delete Confirmation Modal */}
+    <div className="max-w-6xl mx-auto p-4 space-y-6 pb-24 relative">
+      
+      {/* ERROR NOTIFICATION */}
+      {error && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-md px-4">
+          <div className="bg-rose-500 text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between">
+            <p className="text-xs font-black uppercase">{error}</p>
+            <button onClick={() => setError(null)} className="ml-4 font-bold">✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1: DELETE CONFIRMATION */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => !isDeleting && setDeleteTarget(null)}></div>
-          <div className="relative w-full max-w-md glass-card p-8 rounded-[2.5rem] shadow-2xl border border-white/60 animate-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <IconTrash className="w-8 h-8" />
-            </div>
-            <h3 className="text-xl font-black text-slate-900 text-center mb-2">Confirm Deletion</h3>
-            <p className="text-slate-500 text-center text-sm mb-8 leading-relaxed">
-              Are you sure you want to remove <span className="font-black text-slate-800">"{deleteTarget.name}"</span>? 
-              This action is permanent and cannot be undone.
-            </p>
-            <div className="grid grid-cols-2 gap-4">
-              <button 
-                disabled={isDeleting}
-                onClick={() => setDeleteTarget(null)} 
-                className="py-4 bg-slate-100 text-slate-600 font-black rounded-2xl hover:bg-slate-200 transition-all active:scale-95 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button 
-                disabled={isDeleting}
-                onClick={executeDelete} 
-                className="py-4 bg-rose-500 text-white font-black rounded-2xl shadow-lg shadow-rose-100 hover:bg-rose-600 transition-all active:scale-95 disabled:opacity-50"
-              >
-                {isDeleting ? 'Removing...' : 'Delete Now'}
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+          <div className="bg-white p-8 rounded-[2rem] shadow-2xl max-w-sm w-full text-center">
+            <h3 className="text-xl font-black mb-2 text-slate-800">Confirm Delete</h3>
+            <p className="text-slate-500 text-sm mb-6">Remove <span className="text-rose-500 font-bold">"{deleteTarget.name}"</span>?</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold">Cancel</button>
+              <button onClick={executeDelete} disabled={isSubmitting} className="flex-1 py-3 bg-rose-500 text-white rounded-xl font-bold">
+                {isSubmitting ? '...' : 'Delete'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex items-center justify-between glass-card p-2 rounded-[2.5rem] max-w-md mx-auto shadow-xl">
-        <button 
-          onClick={() => setActiveTab('NOTES')} 
-          className={`flex-1 py-3.5 rounded-[1.8rem] text-xs font-black transition-all ${activeTab === 'NOTES' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-400 hover:text-slate-600'}`}
-        >
-          RESOURCES
-        </button>
-        <button 
-          onClick={() => setActiveTab('SUBJECTS')} 
-          className={`flex-1 py-3.5 rounded-[1.8rem] text-xs font-black transition-all ${activeTab === 'SUBJECTS' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-400 hover:text-slate-600'}`}
-        >
-          SUBJECTS
-        </button>
-      </div>
-
-      {/* Header & Add Button */}
-      <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 px-4">
-        <div>
-          <h2 className="text-4xl font-[900] text-slate-900 tracking-tight">
-            {activeTab === 'NOTES' ? 'Note Assets' : 'Subject Master'}
-          </h2>
-          <p className="text-slate-400 text-sm font-medium mt-1">Manage database records directly from this interface.</p>
-        </div>
-        <button 
-          onClick={() => activeTab === 'NOTES' ? setIsNoteFormOpen(!isNoteFormOpen) : setIsSubjectFormOpen(!isSubjectFormOpen)} 
-          className="bg-slate-900 text-white px-8 py-4 rounded-2xl flex items-center gap-2 font-black shadow-xl hover:bg-indigo-600 transition-all active:scale-95"
-        >
-          <IconPlus className="w-5 h-5" /> 
-          {activeTab === 'NOTES' ? 'Add Note' : 'Add Subject'}
-        </button>
-      </div>
-
-      {/* Forms */}
-      {(isNoteFormOpen || isSubjectFormOpen) && (
-        <div className="glass-card p-8 rounded-[3rem] border border-white/80 shadow-2xl animate-in slide-in-from-top-4 duration-500">
-          {activeTab === 'NOTES' ? (
-            <form onSubmit={handleNoteSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Title</label>
-                <input required value={noteForm.noteName} onChange={e => setNoteForm({...noteForm, noteName: e.target.value})} placeholder="e.g. Yarn Mfg Lecture 01" className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Associated Subject</label>
-                <select required value={noteForm.subjectId} onChange={e => setNoteForm({...noteForm, subjectId: e.target.value})} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl outline-none font-bold">
-                  <option value="">Choose subject...</option>
-                  {subjects.map(s => <option key={s._id} value={s._id}>{s.subjectName} (L{s.level}-T{s.term})</option>)}
+      {/* MODAL 2: ADD SUBJECT FORM */}
+      {isSubjectFormOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl max-w-lg w-full">
+            <h3 className="text-2xl font-black mb-6 text-slate-800">New Subject</h3>
+            <form onSubmit={handleSubjectSubmit} className="space-y-4">
+              <input required placeholder="Subject Name" value={subjectForm.subjectName} onChange={e => setSubjectForm({...subjectForm, subjectName: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl border-2 border-transparent focus:border-indigo-500 outline-none font-bold" />
+              <div className="grid grid-cols-3 gap-2">
+                <select value={subjectForm.department} onChange={e => setSubjectForm({...subjectForm, department: e.target.value as Department})} className="p-3 bg-slate-50 rounded-xl font-bold text-xs">
+                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <select value={subjectForm.level} onChange={e => setSubjectForm({...subjectForm, level: Number(e.target.value)})} className="p-3 bg-slate-50 rounded-xl font-bold text-xs">
+                  {[1,2,3,4].map(l => <option key={l} value={l}>L{l}</option>)}
+                </select>
+                <select value={subjectForm.term} onChange={e => setSubjectForm({...subjectForm, term: Number(e.target.value)})} className="p-3 bg-slate-50 rounded-xl font-bold text-xs">
+                  {[1,2].map(t => <option key={t} value={t}>T{t}</option>)}
                 </select>
               </div>
-              <div className="md:col-span-2 space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Cloud Link (PDF)</label>
-                <input required type="url" value={noteForm.noteGoogleDriveLink} onChange={e => setNoteForm({...noteForm, noteGoogleDriveLink: e.target.value})} placeholder="https://drive.google.com/..." className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl outline-none" />
-              </div>
-              <div className="md:col-span-2 flex justify-end gap-3">
-                 <button type="button" onClick={() => setIsNoteFormOpen(false)} className="px-8 py-4 text-slate-500 font-black rounded-2xl transition-all">Cancel</button>
-                 <button type="submit" className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95">Save Resource</button>
+              <div className="flex gap-3 pt-4">
+                <button type="button" onClick={() => setIsSubjectFormOpen(false)} className="flex-1 py-4 font-black text-slate-400">CANCEL</button>
+                <button type="submit" disabled={isSubmitting} className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg">SAVE</button>
               </div>
             </form>
-          ) : (
-            <form onSubmit={handleSubjectSubmit} className="space-y-6">
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Subject Nomenclature</label>
-                <input required value={subjectForm.subjectName} onChange={e => setSubjectForm({...subjectForm, subjectName: e.target.value})} placeholder="e.g. Advanced Knitting" className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl" />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Department</label>
-                   <select value={subjectForm.department} onChange={e => setSubjectForm({...subjectForm, department: e.target.value as Department})} className="w-full p-4 rounded-2xl font-bold bg-white border">
-                    {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                   </select>
-                </div>
-                <div className="space-y-1">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Academic Level</label>
-                   <select value={subjectForm.level} onChange={e => setSubjectForm({...subjectForm, level: Number(e.target.value)})} className="w-full p-4 rounded-2xl font-bold bg-white border">
-                    {LEVELS.map(l => <option key={l} value={l}>Level {l}</option>)}
-                   </select>
-                </div>
-                <div className="space-y-1">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Semester Term</label>
-                   <select value={subjectForm.term} onChange={e => setSubjectForm({...subjectForm, term: Number(e.target.value)})} className="w-full p-4 rounded-2xl font-bold bg-white border">
-                    {TERMS.map(t => <option key={t} value={t}>Term {t}</option>)}
-                   </select>
-                </div>
-              </div>
-              <div className="flex justify-end gap-3">
-                 <button type="button" onClick={() => setIsSubjectFormOpen(false)} className="px-8 py-4 text-slate-500 font-black rounded-2xl transition-all">Cancel</button>
-                 <button type="submit" className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95">Register Subject</button>
-              </div>
-            </form>
-          )}
+          </div>
         </div>
       )}
 
-      {/* Table Section */}
-      <div className="glass-card rounded-[3rem] overflow-hidden border border-white shadow-lg">
-        <div className="overflow-x-auto no-scrollbar">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50/50 border-b border-slate-100">
-              <tr>
-                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Identification</th>
-                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Classification</th>
-                <th className="px-10 py-6 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100/50">
-              {isLoading ? (
-                <tr><td colSpan={3} className="p-20 text-center"><div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div><p className="mt-4 font-bold text-slate-400 uppercase text-[10px] tracking-widest">Querying Cloud...</p></td></tr>
-              ) : (activeTab === 'NOTES' ? notes : subjects).length > 0 ? (
-                (activeTab === 'NOTES' ? notes : subjects).map((item: any) => (
-                  <tr key={item._id} className="group hover:bg-white/40 transition-colors">
-                    <td className="px-10 py-6">
-                      <div className="font-extrabold text-slate-800">{item.noteName || item.subjectName}</div>
-                      <div className="text-[10px] text-indigo-500 font-bold uppercase mt-1 tracking-tight">
-                        {item.subjectId?.subjectName || `${item.department} Department`}
-                      </div>
-                    </td>
-                    <td className="px-10 py-6">
-                      <div className="flex gap-2">
-                        <span className="px-3 py-1 bg-slate-100 text-[10px] font-black rounded-full text-slate-500">L{item.level || item.subjectId?.level}</span>
-                        <span className="px-3 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded-full uppercase">T{item.term || item.subjectId?.term}</span>
-                      </div>
-                    </td>
-                    <td className="px-10 py-6 text-right">
-                      <button 
-                        onClick={() => setDeleteTarget({ 
-                          id: item._id, 
-                          type: activeTab === 'NOTES' ? 'NOTE' : 'SUBJECT', 
-                          name: item.noteName || item.subjectName 
-                        })} 
-                        className="p-3 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-2xl transition-all"
-                      >
-                        <IconTrash className="w-5 h-5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={3} className="p-24 text-center">
-                    <div className="bg-slate-50 inline-block p-6 rounded-[2.5rem] mb-4">
-                      <IconFile className="w-10 h-10 text-slate-200" />
-                    </div>
-                    <p className="text-slate-400 font-black text-sm uppercase tracking-widest">No cloud records found</p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {/* MODAL 3: ADD RESOURCE (NOTE) FORM */}
+      {isNoteFormOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl max-w-xl w-full">
+            <h3 className="text-2xl font-black mb-6 text-slate-800">Add Resource</h3>
+            <form onSubmit={handleNoteSubmit} className="space-y-4">
+              <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 rounded-xl">
+                <select value={noteForm.tempDept} onChange={e => setNoteForm({...noteForm, tempDept: e.target.value as Department, subjectId: ''})} className="bg-transparent font-bold text-[10px] outline-none">
+                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <select value={noteForm.tempLevel} onChange={e => setNoteForm({...noteForm, tempLevel: Number(e.target.value), subjectId: ''})} className="bg-transparent font-bold text-[10px] outline-none">
+                  {[1,2,3,4].map(l => <option key={l} value={l}>Level {l}</option>)}
+                </select>
+                <select value={noteForm.tempTerm} onChange={e => setNoteForm({...noteForm, tempTerm: Number(e.target.value), subjectId: ''})} className="bg-transparent font-bold text-[10px] outline-none">
+                  {[1,2].map(t => <option key={t} value={t}>Term {t}</option>)}
+                </select>
+              </div>
+              <select required value={noteForm.subjectId} onChange={e => setNoteForm({...noteForm, subjectId: e.target.value})} className="w-full p-4 border-2 border-indigo-100 rounded-xl font-bold">
+                <option value="">{formAvailableSubjects.length > 0 ? 'Select Subject...' : 'No subjects in this L-T'}</option>
+                {formAvailableSubjects.map(s => <option key={s._id} value={s._id}>{s.subjectName}</option>)}
+              </select>
+              <input required placeholder="Resource Title" value={noteForm.noteName} onChange={e => setNoteForm({...noteForm, noteName: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none font-bold" />
+              <input required type="url" placeholder="Google Drive URL" value={noteForm.noteGoogleDriveLink} onChange={e => setNoteForm({...noteForm, noteGoogleDriveLink: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none font-bold" />
+              <div className="flex gap-3 pt-4">
+                <button type="button" onClick={() => setIsNoteFormOpen(false)} className="flex-1 py-4 font-black text-slate-400">CANCEL</button>
+                <button type="submit" disabled={isSubmitting} className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg">SAVE</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DASHBOARD HEADER */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex bg-slate-100 p-1.5 rounded-2xl">
+          <button onClick={() => setActiveTab('NOTES')} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${activeTab === 'NOTES' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>RESOURCES</button>
+          <button onClick={() => setActiveTab('SUBJECTS')} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${activeTab === 'SUBJECTS' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>SUBJECTS</button>
+        </div>
+        <div className="flex gap-2">
+            <select value={selectedLT} onChange={(e) => setSelectedLT(e.target.value)} className="bg-slate-100 px-4 py-3 rounded-2xl font-black text-xs outline-none">
+                {[1,2,3,4].map(l => [1,2].map(t => <option key={`${l}-${t}`} value={`L${l}-T${t}`}>L{l}-T{t}</option>))}
+            </select>
+            <input type="text" placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-1 bg-white border border-slate-200 px-6 py-3 rounded-2xl outline-none" />
         </div>
       </div>
+
+      {/* DEPARTMENT TABS */}
+      <div className="flex flex-wrap justify-center gap-2">
+        {DEPARTMENTS.map(dept => (
+          <button key={dept} onClick={() => setSelectedDept(dept as Department)} className={`px-5 py-2 rounded-xl text-[10px] font-black border-2 transition-all ${selectedDept === dept ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-100 text-slate-400'}`}>{dept.toUpperCase()}</button>
+        ))}
+      </div>
+
+      {/* DATA TABLE */}
+      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden min-h-[400px]">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50/80">
+            <tr>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Details</th>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Position</th>
+              <th className="px-8 py-5 text-right"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {isLoading ? (
+              <tr><td colSpan={3} className="p-20 text-center animate-pulse text-slate-300 font-black uppercase">Loading...</td></tr>
+            ) : displayData.length > 0 ? (
+              displayData.map((item: any) => (
+                <tr key={item._id} className="group hover:bg-slate-50/50">
+                  <td className="px-8 py-5">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-indigo-50 rounded-lg text-indigo-500">
+                        {activeTab === 'NOTES' ? <IconFile className="w-5 h-5" /> : <div className="font-black text-[10px]">SUB</div>}
+                      </div>
+                      <div>
+                        <div className="font-black text-slate-800 text-sm leading-tight">{item.noteName || item.subjectName}</div>
+                        <div className="text-[10px] text-indigo-400 font-bold uppercase mt-0.5">
+                          {activeTab === 'NOTES' ? (item.subjectId?.subjectName || 'Generic') : item.department}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-8 py-5 text-center">
+                    <span className="inline-block px-3 py-1 bg-slate-100 rounded-full text-[10px] font-black text-slate-500 uppercase">
+                      L{item.level || item.subjectId?.level}-T{item.term || item.subjectId?.term}
+                    </span>
+                  </td>
+                  <td className="px-8 py-5 text-right">
+                    <button onClick={() => setDeleteTarget({ id: item._id, type: activeTab === 'NOTES' ? 'NOTE' : 'SUBJECT', name: item.noteName || item.subjectName })} className="p-2 text-slate-300 hover:text-rose-500">
+                      <IconTrash className="w-5 h-5" />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr><td colSpan={3} className="p-32 text-center text-slate-300 font-black text-xs uppercase">No Results Found</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* FLOATING ACTION BUTTON */}
+      <button 
+        onClick={() => {
+          console.log("Button clicked, tab is:", activeTab);
+          if (activeTab === 'NOTES') setIsNoteFormOpen(true);
+          else setIsSubjectFormOpen(true);
+        }} 
+        className="fixed bottom-8 right-8 bg-slate-900 text-white pl-5 pr-6 py-4 rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center gap-3 z-[999]"
+      >
+        <IconPlus className="w-5 h-5" />
+        <span className="font-black text-xs uppercase tracking-wider">New {activeTab === 'NOTES' ? 'Resource' : 'Subject'}</span>
+      </button>
+
     </div>
   );
 };
