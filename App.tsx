@@ -94,7 +94,7 @@ const App: React.FC = () => {
               CTEC NOTE APP
             </div>
             <h2 className="text-4xl md:text-6xl font-[900] text-slate-900 mb-6 tracking-tight leading-tight">
-              BUTEX Affiliated Colleges Notes FOR <br/> 
+              BUTEX Affiliated Colleges Notes For <br/> 
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-500">Every Department</span>
             </h2>
             <p className="text-slate-500 max-w-xl mx-auto text-base md:text-lg font-medium leading-relaxed mb-8">
